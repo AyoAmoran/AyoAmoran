@@ -1,0 +1,58 @@
+import pandas as pd
+import xlsxwriter
+import numpy as np
+import os
+import re  # Import regular expression module
+from natsort import natsorted  # Import natural sorting for file titles
+ 
+path = 'analyses_LG'
+folder = [file for file in os.listdir(path)]
+internal = pd.read_excel('C:\\Users\\ilesanmi.amoran\\python\\internal_files\\internal_LG.xlsx', sheet_name='Data')
+internal_dict = dict(zip(internal['Support Code'], internal['Language']))  # for mapping
+
+all_file = pd.DataFrame()  # Initialize an empty DataFrame to store concatenated data
+ 
+for file in folder:
+    # Extract file title from each Excel file
+    file_title = re.search(r'_(\d+)_', file)
+    if file_title:
+        file_title = file_title.group(1)
+    else:
+        # If no match is found, use the whole file name
+        file_title = file
+ 
+    df = pd.read_excel('./analyses_LG/' + file, sheet_name=0, header=1)
+    df = df.drop(['File Name', 'Segments'], axis=1)
+    df['Fuzzies'] = df['75% - 99%'] + df['Repetitions75% - 99%']
+    df['New_Client'] = df['Repetitions75% - 99%'] + df['No Match']
+ 
+    # Compare 'language' column in path file with internal and add 'Support Code'
+    df = pd.merge(df, internal, how='left', on='Language')
+     # Add the file title as a new column
+    df['File Title'] = file_title
+ 
+    all_file = pd.concat([all_file, df], axis=0)
+ 
+# Create Supplier and Client pivots
+Supplier_pivot = pd.pivot_table(all_file, index=['File Title', 'Support Code', 'Batch Name'],
+
+                                values=('Context', '100% Match', 'Fuzzies', 'No Match', 'Repetitions', 'Total'),
+
+                                aggfunc='sum').reset_index()
+Supplier_pivot = Supplier_pivot[['File Title', 'Support Code', 'Batch Name', 'Context', '100% Match', 'Fuzzies', 'No Match', 'Repetitions', 'Total']]
+
+Client_pivot = pd.pivot_table(all_file, index=['File Title', 'Support Code', 'Batch Name'],
+
+                              values=('Context', '100% Match', '75% - 99%', 'New_Client', 'Repetitions', 'Total'),
+
+                              aggfunc='sum').reset_index()
+Client_pivot = Client_pivot[['File Title', 'Support Code', 'Batch Name', 'Context', '100% Match', '75% - 99%', 'New_Client', 'Repetitions', 'Total']]
+ 
+# Sort the final output based on File Title and Support Code
+Supplier_pivot = Supplier_pivot.sort_values(by=['File Title', 'Support Code'])
+Client_pivot = Client_pivot.sort_values(by=['File Title', 'Support Code'])
+ 
+# Write to Excel
+with pd.ExcelWriter('LG_file.xlsx', engine='xlsxwriter') as writer:
+    Client_pivot.to_excel(writer, sheet_name='CLIENT', index=False)
+    Supplier_pivot.to_excel(writer, sheet_name='SUPPLIER', index=False)
